@@ -217,6 +217,21 @@ func TestIPv6FragmentReassemblyTimeout(t *testing.T) {
 				payloadFragment: 1,
 			},
 		},
+		{
+			name:                 "reassembly timeout (two fragments with a gap in reverse order)",
+			firstPayloadLength:   8,
+			payload:              []byte(data)[:20],
+			secondFragmentOffset: (header.ICMPv6EchoMinimumSize + 16) / 8,
+			sendFrameOrder:       []int{2, 1},
+			replyFilter: icmpFramePattern{
+				typ:  header.ICMPv6TimeExceeded,
+				code: header.ICMPv6ReassemblyTimeout,
+			},
+			expectErrorReply: true,
+			expectICMPReassemblyTimeout: icmpReassemblyTimeoutDetail{
+				payloadFragment: 1,
+			},
+		},
 	}
 
 	for _, test := range tests {
@@ -338,7 +353,7 @@ func TestIPv6FragmentParamProblem(t *testing.T) {
 				},
 			}, time.Second)
 			if err != nil {
-				t.Fatalf("didn't receive an ICMPv6 Error Message with type=%d and code=%d: err", test.replyFilter.typ, test.replyFilter.code, err)
+				t.Fatalf("didn't receive an ICMPv6 Error Message with type=%d and code=%d: %s", test.replyFilter.typ, test.replyFilter.code, err)
 			}
 			gotPayload, err := gotErrorMessage[len(gotErrorMessage)-1].ToBytes()
 			if err != nil {

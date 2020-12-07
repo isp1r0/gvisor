@@ -69,7 +69,7 @@ func Flistxattr(t *kernel.Task, args arch.SyscallArguments) (uintptr, *kernel.Sy
 	size := args[2].SizeT()
 
 	file := t.GetFileVFS2(fd)
-	if file == nil {
+	if file == nil || file.StatusFlags()&linux.O_PATH != 0 {
 		return 0, nil, syserror.EBADF
 	}
 	defer file.DecRef(t)
@@ -138,7 +138,7 @@ func Fgetxattr(t *kernel.Task, args arch.SyscallArguments) (uintptr, *kernel.Sys
 	size := args[3].SizeT()
 
 	file := t.GetFileVFS2(fd)
-	if file == nil {
+	if file == nil || file.StatusFlags()&linux.O_PATH != 0 {
 		return 0, nil, syserror.EBADF
 	}
 	defer file.DecRef(t)
@@ -219,7 +219,7 @@ func Fsetxattr(t *kernel.Task, args arch.SyscallArguments) (uintptr, *kernel.Sys
 	}
 
 	file := t.GetFileVFS2(fd)
-	if file == nil {
+	if file == nil || file.StatusFlags()&linux.O_PATH != 0 {
 		return 0, nil, syserror.EBADF
 	}
 	defer file.DecRef(t)
@@ -278,7 +278,7 @@ func Fremovexattr(t *kernel.Task, args arch.SyscallArguments) (uintptr, *kernel.
 	nameAddr := args[1].Pointer()
 
 	file := t.GetFileVFS2(fd)
-	if file == nil {
+	if file == nil || file.StatusFlags()&linux.O_PATH != 0 {
 		return 0, nil, syserror.EBADF
 	}
 	defer file.DecRef(t)

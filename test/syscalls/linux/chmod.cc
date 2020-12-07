@@ -98,6 +98,20 @@ TEST(ChmodTest, FchmodatBadF) {
   ASSERT_THAT(fchmodat(-1, "foo", 0444, 0), SyscallFailsWithErrno(EBADF));
 }
 
+TEST(ChmodTest, FchmodBadOpenOpathFlag) {
+  TempPath file = ASSERT_NO_ERRNO_AND_VALUE(TempPath::CreateFileMode(0444));
+  FileDescriptor fd = ASSERT_NO_ERRNO_AND_VALUE(Open(file.path(), O_PATH));
+
+  ASSERT_THAT(fchmod(fd.get(), 0644), SyscallFailsWithErrno(EBADF));
+}
+
+TEST(ChmodTest, FchmodatBadOpenOpathFlag) {
+  TempPath file = ASSERT_NO_ERRNO_AND_VALUE(TempPath::CreateFileMode(0444));
+  FileDescriptor fd = ASSERT_NO_ERRNO_AND_VALUE(Open(file.path(), O_PATH));
+
+  ASSERT_THAT(fchmodat(fd.get(), "foo", 0644, 0), SyscallFailsWithErrno(EBADF));
+}
+
 TEST(ChmodTest, FchmodatNotDir) {
   ASSERT_THAT(fchmodat(-1, "", 0444, 0), SyscallFailsWithErrno(ENOENT));
 }

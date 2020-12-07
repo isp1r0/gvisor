@@ -53,6 +53,13 @@ TEST(SyncTest, CannotSyncFileSytemAtBadFd) {
   EXPECT_THAT(syncfs(-1), SyscallFailsWithErrno(EBADF));
 }
 
+TEST(SyncTest, CannotSyncFileSytemAtOpathFD) {
+  int fd;
+  auto f = ASSERT_NO_ERRNO_AND_VALUE(TempPath::CreateFile());
+  ASSERT_THAT(fd = open(f.path().c_str(), O_PATH), SyscallSucceeds());
+  EXPECT_THAT(syncfs(fd), SyscallFailsWithErrno(EBADF));
+  EXPECT_THAT(close(fd), SyscallSucceeds());
+}
 }  // namespace
 
 }  // namespace testing

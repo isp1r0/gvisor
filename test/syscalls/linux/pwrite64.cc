@@ -77,6 +77,14 @@ TEST_F(Pwrite64, Overflow) {
   EXPECT_THAT(close(fd), SyscallSucceeds());
 }
 
+TEST_F(Pwrite64, WriteBadOpenOpathFlag) {
+  int fd;
+  ASSERT_THAT(fd = open(name_.c_str(), O_PATH), SyscallSucceeds());
+  std::vector<char> buf(1);
+  EXPECT_THAT(PwriteFd(fd, buf.data(), 1, 0), SyscallFailsWithErrno(EBADF));
+  EXPECT_THAT(close(fd), SyscallSucceeds());
+}
+
 }  // namespace
 
 }  // namespace testing

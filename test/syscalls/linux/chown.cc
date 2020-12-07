@@ -48,6 +48,22 @@ TEST(ChownTest, FchownatBadF) {
   ASSERT_THAT(fchownat(-1, "fff", 0, 0, 0), SyscallFailsWithErrno(EBADF));
 }
 
+TEST(ChownTest, FchownBadOpenOpathFlag) {
+  const auto dir = ASSERT_NO_ERRNO_AND_VALUE(TempPath::CreateDir());
+  const auto fd =
+      ASSERT_NO_ERRNO_AND_VALUE(Open(dir.path(), O_DIRECTORY | O_PATH));
+
+  ASSERT_THAT(fchown(fd.get(), 0, 0), SyscallFailsWithErrno(EBADF));
+}
+
+TEST(ChownTest, FchownatBadOpenOpathFlag) {
+  const auto dir = ASSERT_NO_ERRNO_AND_VALUE(TempPath::CreateDir());
+  const auto fd =
+      ASSERT_NO_ERRNO_AND_VALUE(Open(dir.path(), O_DIRECTORY | O_PATH));
+
+  ASSERT_THAT(fchownat(fd.get(), "fff", 0, 0, 0), SyscallFailsWithErrno(EBADF));
+}
+
 TEST(ChownTest, FchownatEmptyPath) {
   const auto dir = ASSERT_NO_ERRNO_AND_VALUE(TempPath::CreateDir());
   const auto fd =

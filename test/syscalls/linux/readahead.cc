@@ -87,6 +87,13 @@ TEST(ReadaheadTest, WriteOnly) {
   EXPECT_THAT(readahead(fd.get(), 0, 1), SyscallFailsWithErrno(EBADF));
 }
 
+TEST(ReadaheadTest, BadOpenOpathFlag) {
+  const TempPath in_file = ASSERT_NO_ERRNO_AND_VALUE(TempPath::CreateFile());
+  const FileDescriptor fd =
+      ASSERT_NO_ERRNO_AND_VALUE(Open(in_file.path(), O_PATH));
+  EXPECT_THAT(readahead(fd.get(), 0, 1), SyscallFailsWithErrno(EBADF));
+}
+
 TEST(ReadaheadTest, InvalidSize) {
   // This test is not valid on some Linux kernels.
   SKIP_IF(!IsRunningOnGvisor());

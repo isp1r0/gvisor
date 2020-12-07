@@ -31,7 +31,7 @@ func Syncfs(t *kernel.Task, args arch.SyscallArguments) (uintptr, *kernel.Syscal
 	fd := args[0].Int()
 
 	file := t.GetFileVFS2(fd)
-	if file == nil {
+	if file == nil || file.StatusFlags()&linux.O_PATH != 0 {
 		return 0, nil, syserror.EBADF
 	}
 	defer file.DecRef(t)
@@ -44,7 +44,7 @@ func Fsync(t *kernel.Task, args arch.SyscallArguments) (uintptr, *kernel.Syscall
 	fd := args[0].Int()
 
 	file := t.GetFileVFS2(fd)
-	if file == nil {
+	if file == nil || file.StatusFlags()&linux.O_PATH != 0 {
 		return 0, nil, syserror.EBADF
 	}
 	defer file.DecRef(t)
@@ -74,7 +74,7 @@ func SyncFileRange(t *kernel.Task, args arch.SyscallArguments) (uintptr, *kernel
 	}
 
 	file := t.GetFileVFS2(fd)
-	if file == nil {
+	if file == nil || file.StatusFlags()&linux.O_PATH != 0 {
 		return 0, nil, syserror.EBADF
 	}
 	defer file.DecRef(t)

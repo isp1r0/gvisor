@@ -124,7 +124,19 @@ func Fcntl(t *kernel.Task, args arch.SyscallArguments) (uintptr, *kernel.Syscall
 	defer file.DecRef(t)
 
 	switch cmd {
-	case linux.F_DUPFD, linux.F_DUPFD_CLOEXEC:
+	case linux.F_DUPFD:
+		minfd := args[2].Int()
+		fd, err := t.NewFDFromVFS2(minfd, file, kernel.FDFlags{
+			CloseOnExec: cmd == linux.F_DUPFD_CLOEXEC,
+		})
+		if err != nil {
+			return 0, nil, err
+		}
+		return uintptr(fd), nil, nil
+	case linux.F_DUPFD_CLOEXEC:
+		if file.StatusFlags()&linux.O_PATH != 0 {
+			return 0, nil, syserror.EBADF
+		}
 		minfd := args[2].Int()
 		fd, err := t.NewFDFromVFS2(minfd, file, kernel.FDFlags{
 			CloseOnExec: cmd == linux.F_DUPFD_CLOEXEC,
@@ -144,8 +156,14 @@ func Fcntl(t *kernel.Task, args arch.SyscallArguments) (uintptr, *kernel.Syscall
 	case linux.F_GETFL:
 		return uintptr(file.StatusFlags()), nil, nil
 	case linux.F_SETFL:
+		if file.StatusFlags()&linux.O_PATH != 0 {
+			return 0, nil, syserror.EBADF
+		}
 		return 0, nil, file.SetStatusFlags(t, t.Credentials(), args[2].Uint())
 	case linux.F_GETOWN:
+		if file.StatusFlags()&linux.O_PATH != 0 {
+			return 0, nil, syserror.EBADF
+		}
 		owner, hasOwner := getAsyncOwner(t, file)
 		if !hasOwner {
 			return 0, nil, nil
@@ -155,6 +173,9 @@ func Fcntl(t *kernel.Task, args arch.SyscallArguments) (uintptr, *kernel.Syscall
 		}
 		return uintptr(owner.PID), nil, nil
 	case linux.F_SETOWN:
+		if file.StatusFlags()&linux.O_PATH != 0 {
+			return 0, nil, syserror.EBADF
+		}
 		who := args[2].Int()
 		ownerType := int32(linux.F_OWNER_PID)
 		if who < 0 {
@@ -167,6 +188,9 @@ func Fcntl(t *kernel.Task, args arch.SyscallArguments) (uintptr, *kernel.Syscall
 		}
 		return 0, nil, setAsyncOwner(t, int(fd), file, ownerType, who)
 	case linux.F_GETOWN_EX:
+		if file.StatusFlags()&linux.O_PATH != 0 {
+			return 0, nil, syserror.EBADF
+		}
 		owner, hasOwner := getAsyncOwner(t, file)
 		if !hasOwner {
 			return 0, nil, nil
@@ -174,6 +198,9 @@ func Fcntl(t *kernel.Task, args arch.SyscallArguments) (uintptr, *kernel.Syscall
 		_, err := owner.CopyOut(t, args[2].Pointer())
 		return 0, nil, err
 	case linux.F_SETOWN_EX:
+		if file.StatusFlags()&linux.O_PATH != 0 {
+			return 0, nil, syserror.EBADF
+		}
 		var owner linux.FOwnerEx
 		_, err := owner.CopyIn(t, args[2].Pointer())
 		if err != nil {
@@ -181,6 +208,9 @@ func Fcntl(t *kernel.Task, args arch.SyscallArguments) (uintptr, *kernel.Syscall
 		}
 		return 0, nil, setAsyncOwner(t, int(fd), file, owner.Type, owner.PID)
 	case linux.F_SETPIPE_SZ:
+		if file.StatusFlags()&linux.O_PATH != 0 {
+			return 0, nil, syserror.EBADF
+		}
 		pipefile, ok := file.Impl().(*pipe.VFSPipeFD)
 		if !ok {
 			return 0, nil, syserror.EBADF
@@ -191,23 +221,38 @@ func Fcntl(t *kernel.Task, args arch.SyscallArguments) (uintptr, *kernel.Syscall
 		}
 		return uintptr(n), nil, nil
 	case linux.F_GETPIPE_SZ:
+		if file.StatusFlags()&linux.O_PATH != 0 {
+			return 0, nil, syserror.EBADF
+		}
 		pipefile, ok := file.Impl().(*pipe.VFSPipeFD)
 		if !ok {
 			return 0, nil, syserror.EBADF
 		}
 		return uintptr(pipefile.PipeSize()), nil, nil
 	case linux.F_GET_SEALS:
+		if file.StatusFlags()&linux.O_PATH != 0 {
+			return 0, nil, syserror.EBADF
+		}
 		val, err := tmpfs.GetSeals(file)
 		return uintptr(val), nil, err
 	case linux.F_ADD_SEALS:
+		if file.StatusFlags()&linux.O_PATH != 0 {
+			return 0, nil, syserror.EBADF
+		}
 		if !file.IsWritable() {
 			return 0, nil, syserror.EPERM
 		}
 		err := tmpfs.AddSeals(file, args[2].Uint())
 		return 0, nil, err
 	case linux.F_SETLK, linux.F_SETLKW:
+		if file.StatusFlags()&linux.O_PATH != 0 {
+			return 0, nil, syserror.EBADF
+		}
 		return 0, nil, posixLock(t, args, file, cmd)
 	case linux.F_GETSIG:
+		if file.StatusFlags()&linux.O_PATH != 0 {
+			return 0, nil, syserror.EBADF
+		}
 		a := file.AsyncHandler()
 		if a == nil {
 			// Default behavior aka SIGIO.
@@ -215,6 +260,9 @@ func Fcntl(t *kernel.Task, args arch.SyscallArguments) (uintptr, *kernel.Syscall
 		}
 		return uintptr(a.(*fasync.FileAsync).Signal()), nil, nil
 	case linux.F_SETSIG:
+		if file.StatusFlags()&linux.O_PATH != 0 {
+			return 0, nil, syserror.EBADF
+		}
 		a := file.SetAsyncHandler(fasync.NewVFS2(int(fd))).(*fasync.FileAsync)
 		return 0, nil, a.SetSignal(linux.Signal(args[2].Int()))
 	default:
@@ -339,7 +387,7 @@ func Fadvise64(t *kernel.Task, args arch.SyscallArguments) (uintptr, *kernel.Sys
 	}
 
 	file := t.GetFileVFS2(fd)
-	if file == nil {
+	if file == nil || file.StatusFlags()&linux.O_PATH != 0 {
 		return 0, nil, syserror.EBADF
 	}
 	defer file.DecRef(t)

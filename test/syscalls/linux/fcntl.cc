@@ -213,6 +213,38 @@ TEST(FcntlTest, SetCloExecBadFD) {
   ASSERT_THAT(fcntl(fd, F_SETFD, FD_CLOEXEC), SyscallFailsWithErrno(EBADF));
 }
 
+TEST(FcntlTest, SetOwnBadOpenOpathFlag) {
+  TempPath path = ASSERT_NO_ERRNO_AND_VALUE(TempPath::CreateFile());
+  FileDescriptor fd = ASSERT_NO_ERRNO_AND_VALUE(Open(path.path(), O_PATH));
+
+  EXPECT_THAT(fcntl(fd.get(), F_SETFL, O_RDWR), SyscallFailsWithErrno(EBADF));
+  EXPECT_THAT(fcntl(fd.get(), F_DUPFD_CLOEXEC, O_RDWR),
+              SyscallFailsWithErrno(EBADF));
+
+  EXPECT_THAT(fcntl(fd.get(), F_SETOWN, INT_MIN), SyscallFailsWithErrno(EBADF));
+  EXPECT_THAT(fcntl(fd.get(), F_GETOWN, O_RDWR), SyscallFailsWithErrno(EBADF));
+
+  EXPECT_THAT(fcntl(fd.get(), F_SETOWN_EX, INT_MIN),
+              SyscallFailsWithErrno(EBADF));
+  EXPECT_THAT(fcntl(fd.get(), F_GETOWN_EX, O_RDWR),
+              SyscallFailsWithErrno(EBADF));
+}
+
+TEST(FcntlTest, SetFlBadOpenOpathFlag) {
+  TempPath path = ASSERT_NO_ERRNO_AND_VALUE(TempPath::CreateFile());
+  FileDescriptor fd = ASSERT_NO_ERRNO_AND_VALUE(Open(path.path(), O_PATH));
+
+  EXPECT_THAT(fcntl(fd.get(), F_SETFL, O_RDWR), SyscallFailsWithErrno(EBADF));
+}
+
+TEST(FcntlTest, DupCloExecBadOpenOpathFlag) {
+  TempPath path = ASSERT_NO_ERRNO_AND_VALUE(TempPath::CreateFile());
+  FileDescriptor fd = ASSERT_NO_ERRNO_AND_VALUE(Open(path.path(), O_PATH));
+
+  EXPECT_THAT(fcntl(fd.get(), F_DUPFD_CLOEXEC, O_RDWR),
+              SyscallFailsWithErrno(EBADF));
+}
+
 TEST(FcntlTest, SetCloExec) {
   // Open an eventfd file descriptor with FD_CLOEXEC descriptor flag not set.
   FileDescriptor fd = ASSERT_NO_ERRNO_AND_VALUE(NewEventFD(0, 0));
@@ -390,6 +422,21 @@ TEST_F(FcntlLockTest, SetLockBadOpenFlagsRead) {
   fl1.l_len = 0;
 
   EXPECT_THAT(fcntl(fd.get(), F_SETLK, &fl1), SyscallFailsWithErrno(EBADF));
+}
+
+TEST_F(FcntlLockTest, SetLockBadOpathOpenFlagsWrite) {
+  auto file = ASSERT_NO_ERRNO_AND_VALUE(TempPath::CreateFile());
+  FileDescriptor fd = ASSERT_NO_ERRNO_AND_VALUE(Open(file.path(), O_PATH));
+
+  struct flock fl0;
+  fl0.l_type = F_WRLCK;
+  fl0.l_whence = SEEK_SET;
+  fl0.l_start = 0;
+  fl0.l_len = 0;  // Lock all file
+
+  // Expect that setting a write lock using a Opath file descriptor
+  // won't work.
+  EXPECT_THAT(fcntl(fd.get(), F_SETLK, &fl0), SyscallFailsWithErrno(EBADF));
 }
 
 TEST_F(FcntlLockTest, SetLockUnlockOnNothing) {

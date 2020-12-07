@@ -76,6 +76,12 @@ TEST_F(IoctlTest, InvalidControlNumber) {
   EXPECT_THAT(ioctl(STDOUT_FILENO, 0), SyscallFailsWithErrno(ENOTTY));
 }
 
+TEST_F(IoctlTest, BadOpenOpathFlag) {
+  const FileDescriptor fd =
+      ASSERT_NO_ERRNO_AND_VALUE(Open("/dev/null", O_PATH));
+  EXPECT_THAT(ioctl(fd.get(), 0), SyscallFailsWithErrno(EBADF));
+}
+
 TEST_F(IoctlTest, FIONBIOSucceeds) {
   EXPECT_FALSE(CheckNonBlocking(fd()));
   int set = 1;

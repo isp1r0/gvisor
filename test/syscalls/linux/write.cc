@@ -218,6 +218,18 @@ TEST_F(WriteTest, PwriteNoChangeOffset) {
   EXPECT_THAT(lseek(fd, 0, SEEK_CUR), SyscallSucceedsWithValue(bytes_total));
 }
 
+TEST_F(WriteTest, PwriteOpathFile) {
+  TempPath tmpfile = ASSERT_NO_ERRNO_AND_VALUE(TempPath::CreateFile());
+  FileDescriptor f =
+      ASSERT_NO_ERRNO_AND_VALUE(Open(tmpfile.path().c_str(), O_PATH));
+  int fd = f.get();
+
+  const std::string data = "hello world\n";
+
+  EXPECT_THAT(pwrite(fd, data.data(), data.size(), 0),
+              SyscallFailsWithErrno(EBADF));
+}
+
 }  // namespace
 
 }  // namespace testing

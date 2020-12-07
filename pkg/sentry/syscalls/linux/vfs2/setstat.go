@@ -40,6 +40,13 @@ func Fchmodat(t *kernel.Task, args arch.SyscallArguments) (uintptr, *kernel.Sysc
 	dirfd := args[0].Int()
 	pathAddr := args[1].Pointer()
 	mode := args[2].ModeT()
+
+	dir := t.GetFileVFS2(dirfd)
+	if dir == nil || dir.StatusFlags()&linux.O_PATH != 0 {
+		return 0, nil, syserror.EBADF
+	}
+	defer dir.DecRef(t)
+
 	return 0, nil, fchmodat(t, dirfd, pathAddr, mode)
 }
 
@@ -63,7 +70,7 @@ func Fchmod(t *kernel.Task, args arch.SyscallArguments) (uintptr, *kernel.Syscal
 	mode := args[1].ModeT()
 
 	file := t.GetFileVFS2(fd)
-	if file == nil {
+	if file == nil || file.StatusFlags()&linux.O_PATH != 0 {
 		return 0, nil, syserror.EBADF
 	}
 	defer file.DecRef(t)
@@ -99,6 +106,13 @@ func Fchownat(t *kernel.Task, args arch.SyscallArguments) (uintptr, *kernel.Sysc
 	owner := args[2].Int()
 	group := args[3].Int()
 	flags := args[4].Int()
+
+	dir := t.GetFileVFS2(dirfd)
+	if dir == nil || dir.StatusFlags()&linux.O_PATH != 0 {
+		return 0, nil, syserror.EBADF
+	}
+	defer dir.DecRef(t)
+
 	return 0, nil, fchownat(t, dirfd, pathAddr, owner, group, flags)
 }
 
@@ -148,7 +162,7 @@ func Fchown(t *kernel.Task, args arch.SyscallArguments) (uintptr, *kernel.Syscal
 	group := args[2].Int()
 
 	file := t.GetFileVFS2(fd)
-	if file == nil {
+	if file == nil || file.StatusFlags()&linux.O_PATH != 0 {
 		return 0, nil, syserror.EBADF
 	}
 	defer file.DecRef(t)
@@ -194,7 +208,7 @@ func Ftruncate(t *kernel.Task, args arch.SyscallArguments) (uintptr, *kernel.Sys
 	}
 
 	file := t.GetFileVFS2(fd)
-	if file == nil {
+	if file == nil || file.StatusFlags()&linux.O_PATH != 0 {
 		return 0, nil, syserror.EBADF
 	}
 	defer file.DecRef(t)
@@ -221,7 +235,7 @@ func Fallocate(t *kernel.Task, args arch.SyscallArguments) (uintptr, *kernel.Sys
 
 	file := t.GetFileVFS2(fd)
 
-	if file == nil {
+	if file == nil || file.StatusFlags()&linux.O_PATH != 0 {
 		return 0, nil, syserror.EBADF
 	}
 	defer file.DecRef(t)

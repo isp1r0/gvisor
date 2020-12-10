@@ -16,7 +16,6 @@ package pipe
 
 import (
 	"gvisor.dev/gvisor/pkg/abi/linux"
-	"gvisor.dev/gvisor/pkg/buffer"
 	"gvisor.dev/gvisor/pkg/context"
 	"gvisor.dev/gvisor/pkg/safemem"
 	"gvisor.dev/gvisor/pkg/sentry/arch"
@@ -277,7 +276,8 @@ func (fd *VFSPipeFD) SpliceToNonPipe(ctx context.Context, out *vfs.FileDescripti
 		n, err = out.PWrite(ctx, src, off, vfs.WriteOptions{})
 	}
 	if n > 0 {
-		fd.pipe.view.TrimFront(n)
+		fd.pipe.consumeLocked(n)
+		fd.pipe.Notify(waiter.EventOut)
 	}
 	return n, err
 }
@@ -299,131 +299,53 @@ func (fd *VFSPipeFD) SpliceFromNonPipe(ctx context.Context, in *vfs.FileDescript
 }
 
 // CopyIn implements usermem.IO.CopyIn. Note that it is the caller's
-// responsibility to trim fd.pipe.view after the read is completed.
+// responsibility to call fd.pipe.consumeLocked() and
+// fd.pipe.Notify(waiter.EventOut) after the read is completed.
 func (fd *VFSPipeFD) CopyIn(ctx context.Context, addr usermem.Addr, dst []byte, opts usermem.IOOpts) (int, error) {
-	origCount := int64(len(dst))
-	n, err := fd.pipe.readLocked(ctx, readOps{
-		left: func() int64 {
-			return int64(len(dst))
-		},
-		limit: func(l int64) {
-			dst = dst[:l]
-		},
-		read: func(view *buffer.View) (int64, error) {
-			n, err := view.ReadAt(dst, 0)
-			return int64(n), err
-		},
+	n, err := fd.pipe.peekLocked(int64(len(dst)), func(srcs safemem.BlockSeq) (uint64, error) {
+		return safemem.CopySeq(safemem.BlockSeqOf(safemem.BlockFromSafeSlice(dst)), srcs)
 	})
-	if n > 0 {
-		fd.pipe.Notify(waiter.EventOut)
-	}
-	if err == nil && n != origCount {
-		return int(n), syserror.ErrWouldBlock
-	}
 	return int(n), err
 }
 
 // CopyOut implements usermem.IO.CopyOut.
 func (fd *VFSPipeFD) CopyOut(ctx context.Context, addr usermem.Addr, src []byte, opts usermem.IOOpts) (int, error) {
-	origCount := int64(len(src))
-	n, err := fd.pipe.writeLocked(ctx, writeOps{
-		left: func() int64 {
-			return int64(len(src))
-		},
-		limit: func(l int64) {
-			src = src[:l]
-		},
-		write: func(view *buffer.View) (int64, error) {
-			view.Append(src)
-			return int64(len(src)), nil
-		},
+	n, err := fd.pipe.writeLocked(int64(len(src)), func(dsts safemem.BlockSeq) (uint64, error) {
+		return safemem.CopySeq(dsts, safemem.BlockSeqOf(safemem.BlockFromSafeSlice(src)))
 	})
 	if n > 0 {
 		fd.pipe.Notify(waiter.EventIn)
-	}
-	if err == nil && n != origCount {
-		return int(n), syserror.ErrWouldBlock
 	}
 	return int(n), err
 }
 
 // ZeroOut implements usermem.IO.ZeroOut.
 func (fd *VFSPipeFD) ZeroOut(ctx context.Context, addr usermem.Addr, toZero int64, opts usermem.IOOpts) (int64, error) {
-	origCount := toZero
-	n, err := fd.pipe.writeLocked(ctx, writeOps{
-		left: func() int64 {
-			return toZero
-		},
-		limit: func(l int64) {
-			toZero = l
-		},
-		write: func(view *buffer.View) (int64, error) {
-			view.Grow(view.Size()+toZero, true /* zero */)
-			return toZero, nil
-		},
+	n, err := fd.pipe.writeLocked(toZero, func(dsts safemem.BlockSeq) (uint64, error) {
+		return safemem.ZeroSeq(dsts)
 	})
 	if n > 0 {
 		fd.pipe.Notify(waiter.EventIn)
-	}
-	if err == nil && n != origCount {
-		return n, syserror.ErrWouldBlock
 	}
 	return n, err
 }
 
 // CopyInTo implements usermem.IO.CopyInTo. Note that it is the caller's
-// responsibility to trim fd.pipe.view after the read is completed.
+// responsibility to call fd.pipe.consumeLocked() and
+// fd.pipe.Notify(waiter.EventOut) after the read is completed.
 func (fd *VFSPipeFD) CopyInTo(ctx context.Context, ars usermem.AddrRangeSeq, dst safemem.Writer, opts usermem.IOOpts) (int64, error) {
-	count := ars.NumBytes()
-	if count == 0 {
-		return 0, nil
-	}
-	origCount := count
-	n, err := fd.pipe.readLocked(ctx, readOps{
-		left: func() int64 {
-			return count
-		},
-		limit: func(l int64) {
-			count = l
-		},
-		read: func(view *buffer.View) (int64, error) {
-			n, err := view.ReadToSafememWriter(dst, uint64(count))
-			return int64(n), err
-		},
+	return fd.pipe.peekLocked(ars.NumBytes(), func(srcs safemem.BlockSeq) (uint64, error) {
+		return dst.WriteFromBlocks(srcs)
 	})
-	if n > 0 {
-		fd.pipe.Notify(waiter.EventOut)
-	}
-	if err == nil && n != origCount {
-		return n, syserror.ErrWouldBlock
-	}
-	return n, err
 }
 
 // CopyOutFrom implements usermem.IO.CopyOutFrom.
 func (fd *VFSPipeFD) CopyOutFrom(ctx context.Context, ars usermem.AddrRangeSeq, src safemem.Reader, opts usermem.IOOpts) (int64, error) {
-	count := ars.NumBytes()
-	if count == 0 {
-		return 0, nil
-	}
-	origCount := count
-	n, err := fd.pipe.writeLocked(ctx, writeOps{
-		left: func() int64 {
-			return count
-		},
-		limit: func(l int64) {
-			count = l
-		},
-		write: func(view *buffer.View) (int64, error) {
-			n, err := view.WriteFromSafememReader(src, uint64(count))
-			return int64(n), err
-		},
+	n, err := fd.pipe.writeLocked(ars.NumBytes(), func(dsts safemem.BlockSeq) (uint64, error) {
+		return src.ReadToBlocks(dsts)
 	})
 	if n > 0 {
 		fd.pipe.Notify(waiter.EventIn)
-	}
-	if err == nil && n != origCount {
-		return n, syserror.ErrWouldBlock
 	}
 	return n, err
 }
@@ -470,34 +392,18 @@ func spliceOrTee(ctx context.Context, dst, src *VFSPipeFD, count int64, removeFr
 	defer dst.pipe.mu.Unlock()
 	defer src.pipe.mu.Unlock()
 
-	n, err := dst.pipe.writeLocked(ctx, writeOps{
-		left: func() int64 {
-			return count
-		},
-		limit: func(l int64) {
-			count = l
-		},
-		write: func(dstView *buffer.View) (int64, error) {
-			return src.pipe.readLocked(ctx, readOps{
-				left: func() int64 {
-					return count
-				},
-				limit: func(l int64) {
-					count = l
-				},
-				read: func(srcView *buffer.View) (int64, error) {
-					n, err := srcView.ReadToSafememWriter(dstView, uint64(count))
-					if n > 0 && removeFromSrc {
-						srcView.TrimFront(int64(n))
-					}
-					return int64(n), err
-				},
-			})
-		},
+	n, err := dst.pipe.writeLocked(count, func(dsts safemem.BlockSeq) (uint64, error) {
+		n, err := src.pipe.peekLocked(int64(dsts.NumBytes()), func(srcs safemem.BlockSeq) (uint64, error) {
+			return safemem.CopySeq(dsts, srcs)
+		})
+		if n > 0 && removeFromSrc {
+			src.pipe.consumeLocked(n)
+			src.pipe.Notify(waiter.EventOut)
+		}
+		return uint64(n), err
 	})
 	if n > 0 {
 		dst.pipe.Notify(waiter.EventIn)
-		src.pipe.Notify(waiter.EventOut)
 	}
 	return n, err
 }

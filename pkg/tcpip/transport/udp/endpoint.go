@@ -464,6 +464,9 @@ func (e *endpoint) write(p tcpip.Payloader, opts tcpip.WriteOptions) (int64, <-c
 		// Reject destination address if it goes through a different
 		// NIC than the endpoint was bound to.
 		nicID := to.NIC
+		if nicID == 0 {
+			nicID = e.bindToDevice
+		}
 		if e.BindNICID != 0 {
 			if nicID != 0 && nicID != e.BindNICID {
 				return 0, nil, tcpip.ErrNoRoute

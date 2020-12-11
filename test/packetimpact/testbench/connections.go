@@ -1053,6 +1053,14 @@ func (conn *UDPIPv4) ExpectData(t *testing.T, udp UDP, payload Payload, timeout 
 	return (*Connection)(conn).ExpectFrame(t, expected, timeout)
 }
 
+// ExpectFrame expects a frame that matches the provided Layers within the
+// timeout specified. If it doesn't arrive in time, an error is returned.
+func (conn *UDPIPv4) ExpectFrame(t *testing.T, frame Layers, timeout time.Duration) (Layers, error) {
+	t.Helper()
+
+	return (*Connection)(conn).ExpectFrame(t, frame, timeout)
+}
+
 // Close frees associated resources held by the UDPIPv4 connection.
 func (conn *UDPIPv4) Close(t *testing.T) {
 	t.Helper()
